@@ -2,6 +2,7 @@
 /*/
 !/.gitignore
 !/.editorconfig
+!/mybb-1.8.39-cf-connecting-ip.patch
 !/admin/
 !/admin/modules/
 !/admin/modules/cloudflare/

@@ -58,12 +58,33 @@ If your forum is behind Cloudflare and you want MyBB to log the real visitor IP,
 1. Enable MyBB forwarded-IP handling with `ip_forwarded_check`.
 2. Patch MyBB core IP resolution to prefer Cloudflare's `CF-Connecting-IP` header before the generic forwarded-IP headers.
 
-The relevant MyBB core change is in `inc/functions.php`, in the IP resolution path. The precedence should be:
+The relevant MyBB core change is in `inc/functions.php`, in `function get_ip()`.
+
+This fork includes a ready-to-review patch file:
+
+- [`mybb-1.8.39-cf-connecting-ip.patch`](mybb-1.8.39-cf-connecting-ip.patch)
+
+That patch is written against the official MyBB `1.8.39` `get_ip()` implementation and shows the exact function change, not just a prose summary.
+
+At a high level, the upstream function checks:
+
+1. `HTTP_X_FORWARDED_FOR`
+2. `HTTP_X_REAL_IP`
+
+The patched function changes that precedence to:
 
 1. `HTTP_CF_CONNECTING_IP`
 2. `HTTP_X_FORWARDED_FOR`
 3. `HTTP_X_REAL_IP`
 4. fallback to `REMOTE_ADDR`
+
+It keeps MyBB's existing IP validation and private-range filtering intact.
+
+If you are applying it to an installed board rooted at the MyBB webroot, the target file is:
+
+- `inc/functions.php`
+
+If you are applying it to a MyBB source package before deployment, patch the same `get_ip()` function inside the package's `Upload/inc/functions.php`.
 
 This fork documents that requirement because the Cloudflare plugin and the forum's application-layer IP handling are separate concerns.
 

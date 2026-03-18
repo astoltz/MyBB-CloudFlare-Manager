@@ -1,0 +1,46 @@
+--- inc/functions.php
++++ inc/functions.php
+@@ -4473,18 +4473,30 @@ function get_ip()
+ 	if($mybb->settings['ip_forwarded_check'])
+ 	{
+-		$addresses = array();
++		$forwarded_headers = array();
+ 
+-		if(isset($_SERVER['HTTP_X_FORWARDED_FOR']))
++		// Prefer Cloudflare's explicit client-IP header before generic proxy headers.
++		if(isset($_SERVER['HTTP_CF_CONNECTING_IP']))
+ 		{
+-			$addresses = explode(',', strtolower($_SERVER['HTTP_X_FORWARDED_FOR']));
++			$forwarded_headers[] = $_SERVER['HTTP_CF_CONNECTING_IP'];
+ 		}
+-		elseif(isset($_SERVER['HTTP_X_REAL_IP']))
++
++		if(isset($_SERVER['HTTP_X_FORWARDED_FOR']))
+ 		{
+-			$addresses = explode(',', strtolower($_SERVER['HTTP_X_REAL_IP']));
++			$forwarded_headers[] = $_SERVER['HTTP_X_FORWARDED_FOR'];
+ 		}
+ 
+-		if(is_array($addresses))
++		if(isset($_SERVER['HTTP_X_REAL_IP']))
+ 		{
+-			foreach($addresses as $val)
++			$forwarded_headers[] = $_SERVER['HTTP_X_REAL_IP'];
++		}
++
++		foreach($forwarded_headers as $header_value)
++		{
++			$addresses = explode(',', strtolower($header_value));
++
++			foreach($addresses as $val)
+ 			{
+ 				$val = trim($val);
+ 				// Validate IP address and exclude private addresses
+ 				if(my_inet_ntop(my_inet_pton($val)) == $val && !preg_match("#^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|fe80:|fe[c-f][0-f]:|f[c-d][0-f]{2}:)#", $val))
+ 				{
+ 					$ip = $val;
+-					break;
++					break 2;
+ 				}
+ 			}
+ 		}
