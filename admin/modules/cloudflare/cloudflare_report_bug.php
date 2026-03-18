@@ -6,6 +6,6 @@ if(!defined("IN_MYBB"))
 	die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
 
-admin_redirect('https://github.com/dequeues/MyBB-CloudFlare-Manager/issues');
+admin_redirect(defined('CLOUDFLARE_MANAGER_ISSUES_URL') ? CLOUDFLARE_MANAGER_ISSUES_URL : 'https://github.com/astoltz/MyBB-CloudFlare-Manager/issues');
 
 ?>

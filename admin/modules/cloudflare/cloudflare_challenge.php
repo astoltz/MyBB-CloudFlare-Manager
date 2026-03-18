@@ -6,6 +6,8 @@ if(!defined("IN_MYBB"))
 	die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
 
+require_once __DIR__ . "/class/cloudflare_access_rule_batch.php";
+
 $page->add_breadcrumb_item("CloudFlare Manager", "index.php?module=cloudflare");
 $page->add_breadcrumb_item("Challenge", "index.php?module=cloudflare-challenge");
 
@@ -13,27 +15,40 @@ $page->output_header("CloudFlare Manager - Challenge");
 
 function main_page()
 {
-	$form = new Form("index.php?module=cloudflare-challenge&amp;action=add_ip", "post");
-	$form_container = new FormContainer("Challenge an IP");
-	$form_container->output_row("IP Address", "The IP address won't be able to access your site until they have completed the captcha successfully or you have removed them from the challenge list.", $form->generate_text_box('ip_address'));
-	$form_container->output_row("Notes", "Any notes you would like to add", $form->generate_text_box('notes'));
-	$form_container->end();
-	$buttons[] = $form->generate_submit_button("Submit");
-	$form->output_submit_wrapper($buttons);
-	$form->end();
+	cloudflare_render_access_rule_form(
+		'cloudflare-challenge',
+		'Challenge IPs / CIDRs',
+		'Enter one IPv4 address, IPv6 address, or CIDR range per line. Comma- or semicolon-separated lists are also accepted.',
+		'Challenge'
+	);
 }
 
-if ($mybb->input['action'] == "add_ip")
+if ($mybb->input['action'] == "run")
 {
-	$request = $cloudflare->challenge_ip($mybb->input['ip_address'], $mybb->input['notes']);
-
-	if (isset($request['success']))
+	if(!verify_post_check($mybb->input['my_post_key']))
 	{
-		$page->output_success("<p><em>CloudFlare has successfully challenged {$mybb->input['ip_address']} on {$mybb->settings['cloudflare_domain']}.</em></p>");
+		flash_message($lang->invalid_post_verify_key2, 'error');
+		admin_redirect("index.php?module=cloudflare-challenge");
 	}
-	else
+
+	$targets = cloudflare_parse_access_rule_targets($mybb->get_input('targets'));
+	if(empty($targets))
 	{
-		$page->output_inline_error($request['errors']);
+		$page->output_inline_error('Enter at least one IP address or CIDR range.');
+		main_page();
+		$page->output_footer();
+		exit;
+	}
+
+	$result = cloudflare_apply_access_rule_targets($cloudflare, 'challenge', $targets, $mybb->get_input('notes'));
+
+	if(!empty($result['successes']))
+	{
+		$page->output_success(cloudflare_build_access_rule_success_message('challenging', htmlspecialchars_uni($mybb->settings['cloudflare_domain']), $result));
+	}
+	if(!empty($result['errors']))
+	{
+		$page->output_inline_error($result['errors']);
 	}
 }
 

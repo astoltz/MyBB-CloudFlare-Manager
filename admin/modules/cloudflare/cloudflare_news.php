@@ -32,26 +32,88 @@ if(!$mybb->input['action'])
 	$table->construct_cell(get_feed());
 	$table->construct_row();
 
-	$table->output("Latest News From the <a href=\"http://blog.cloudflare.com/\" target=\"_blank\">CloudFlare Blog</a>");
+	$table->output("Latest News From the <a href=\"https://blog.cloudflare.com/\" target=\"_blank\" rel=\"noopener noreferrer\">CloudFlare Blog</a>");
 
 	$page->output_footer();
 }
 
 function get_feed()
 {
-	$feed = @simplexml_load_file("http://blog.cloudflare.com/rss.xml");
+	global $cache;
 
-	if($feed)
+	$cacheKey = 'cloudflare_blog_feed';
+	$cacheTtl = 1800;
+	$now = defined('TIME_NOW') ? TIME_NOW : time();
+	$cached = isset($cache) ? $cache->read($cacheKey) : null;
+	if(
+		is_array($cached) &&
+		!empty($cached['html']) &&
+		isset($cached['expires_at']) &&
+		(int)$cached['expires_at'] >= $now
+	)
 	{
-		foreach($feed->channel->item as $entry)
+		return $cached['html'];
+	}
+
+	$feedUrls = array(
+		'https://blog.cloudflare.com/rss/',
+		'https://blog.cloudflare.com/rss.xml',
+	);
+
+	foreach($feedUrls as $feedUrl)
+	{
+		$rawFeed = fetch_remote_file($feedUrl);
+		$html = cloudflare_build_feed_html($rawFeed);
+		if($html === false)
 		{
-			return "<span style=\"font-size: 16px;\"><strong>{$entry->title} - {$entry->pubDate}</strong></span>" . "<br /><br />{$entry->description}<br /><br />";
+			continue;
 		}
+
+		if(isset($cache))
+		{
+			$cache->update($cacheKey, array(
+				'html' => $html,
+				'expires_at' => $now + $cacheTtl,
+				'source_url' => $feedUrl,
+			));
+		}
+
+		return $html;
 	}
-	else
+
+	if(is_array($cached) && !empty($cached['html']))
 	{
-		return "Error: Could not retrieve data.";
+		return $cached['html'] . "<br /><br /><em>Showing cached CloudFlare blog data because the live feed could not be refreshed.</em>";
 	}
+
+	return "Error: Could not retrieve data.";
+}
+
+function cloudflare_build_feed_html($rawFeed)
+{
+	if(!is_string($rawFeed) || trim($rawFeed) === '')
+	{
+		return false;
+	}
+
+	libxml_use_internal_errors(true);
+	$feed = simplexml_load_string($rawFeed);
+	libxml_clear_errors();
+
+	if(!$feed || empty($feed->channel->item))
+	{
+		return false;
+	}
+
+	foreach($feed->channel->item as $entry)
+	{
+		$title = isset($entry->title) ? htmlspecialchars_uni((string)$entry->title) : '';
+		$pubDate = isset($entry->pubDate) ? htmlspecialchars_uni((string)$entry->pubDate) : '';
+		$description = isset($entry->description) ? (string)$entry->description : '';
+		return "<span style=\"font-size: 16px;\"><strong>{$title} - {$pubDate}</strong></span><br /><br />{$description}<br /><br />";
+	}
+
+	return false;
 }
 
 ?>

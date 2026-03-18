@@ -12,6 +12,19 @@ $zone_id = ($cache->read('cloudflare_zone_id') ? $cache->read('cloudflare_zone_i
 require_once("class/cloudflare.php");
 $cloudflare = new cloudflare($mybb, $zone_id);
 
+function cloudflare_action_requires_zone_context($action)
+{
+	$passiveActions = array(
+		'overview',
+		'news',
+		'about_plugin',
+		'check_for_updates',
+		'report_bug',
+	);
+
+	return !in_array($action, $passiveActions, true);
+}
+
 function cloudflare_meta()
 {
 	global $mybb, $page, $plugins, $cache, $cloudflare;
@@ -27,14 +40,10 @@ function cloudflare_meta()
 		}
 	}
 
-	if (!$cache->read("cloudflare_zone_id"))
-	{
-		$cloudflare->get_cloudflare_zone_id();
-	}
-
 	$sub_menu = array();
 	$sub_menu['10'] = array("id" => "overview", "title" => "CloudFlare Overview", "link" => "index.php?module=cloudflare-overview");
 	$sub_menu['20'] = array("id" => "dev_mode", "title" => "Development Mode", "link" => "index.php?module=cloudflare-dev_mode");
+	$sub_menu['30'] = array("id" => "integrations", "title" => "Browser Integrations", "link" => "index.php?module=cloudflare-integrations");
 
 	$sub_menu = $plugins->run_hooks("admin_cloudflare_menu", $sub_menu);
 
@@ -50,8 +59,10 @@ function cloudflare_action_handler($action)
 {
 	global $page, $plugins, $cache, $cloudflare, $mybb;
 
-	if (empty($mybb->settings['cloudflare_domain']) || empty($mybb->settings['cloudflare_api'])) {
-		flash_message("Cloudflare domain and API must be set.", 'error');
+	require_once(MYBB_ROOT . "inc/plugins/cloudflare.php");
+
+	if (!cloudflare_has_api_credentials($mybb->settings)) {
+		flash_message("Cloudflare domain and credentials must be set. Configure either an API token or the legacy API key/email pair.", 'error');
 		admin_redirect("index.php?module=config-plugins");
 		exit;
 	}
@@ -62,6 +73,7 @@ function cloudflare_action_handler($action)
 		'overview' => array('active' => 'overview', 'file' => 'cloudflare_overview.php'),
 		'purge_cache' => array('active' => 'purge_cache', 'file' => 'cloudflare_purge_cache.php'),
 		'dev_mode' => array('active' => 'dev_mode', 'file' => 'cloudflare_dev_mode.php'),
+		'integrations' => array('active' => 'integrations', 'file' => 'cloudflare_integrations.php'),
 		'cache_lvl' => array('active' => 'cache_lvl', 'file' => 'cloudflare_cache_lvl.php'),
 		'security_lvl' => array('active' => 'security_lvl', 'file' => 'cloudflare_security_lvl.php'),
 		'blacklist' => array('active' => 'blacklist', 'file' => 'cloudflare_blacklist.php'),
@@ -98,28 +110,40 @@ function cloudflare_action_handler($action)
 		10 => array("id" => "security_lvl", "title" => "Security Level", "link" => "index.php?module=cloudflare-security_lvl"),
 	);
 
+	$sub_menu['Integrations'] = array (
+		10 => array("id" => "integrations", "title" => "Browser Integrations", "link" => "index.php?module=cloudflare-integrations"),
+	);
+
 	$sub_menu['About Plugin'] = array (
 		10 => array("id" => "about_plugin", "title" => "About Plugin", "link" => "index.php?module=cloudflare-about_plugin"),
 		20 => array("id" => "check_for_updates", "title" => "Check for Updates", "link" => "index.php?module=cloudflare-check_for_updates"),
 		40 => array("id" => "report_bug", "title" => "Report Bug", "link" => "index.php?module=cloudflare-report_bug")
 	);
 
+	if(empty($actions))
+	{
+		return "cloudflare_overview.php";
+	}
+
 	if(!isset($actions[$action]))
 	{
-		$page->active_action = "overview";
+		reset($actions);
+		$action = key($actions);
 	}
+
+	$page->active_action = $actions[$action]['active'];
 
 	foreach($sub_menu as $title => $menu)
 	{
 		$sidebar = new SideBarItem($title);
-		$sidebar->add_menu_items($menu, $actions[$action]['active']);
+		$sidebar->add_menu_items($menu, $page->active_action);
 		$page->sidebar .= $sidebar->get_markup();
 	}
 
 
-	if (!$cache->read('cloudflare_zone_id'))
+	if (cloudflare_action_requires_zone_context($action) && !$cache->read('cloudflare_zone_id'))
 	{
-		$zone_id = $cloudflare->get_cloudflare_zone_id();
+		$zone_id = $cloudflare->ensure_zone_context();
 		if (isset($zone_id['errors']))
 		{
 			$page->active_action = "overview";
@@ -127,15 +151,7 @@ function cloudflare_action_handler($action)
 		}
 	}
 
-	if(isset($actions[$action]))
-	{
-		$page->active_action = $actions[$action]['active'];
-		return $actions[$action]['file'];
-	}
-	else
-	{
-		return "cloudflare_overview.php";
-	}
+	return $actions[$action]['file'];
 
 }
 
@@ -149,6 +165,7 @@ function cloudflare_admin_permissions()
 		"dev_mode"		=> "Can manage CloudFlare development mode?",
 		"manage_firewall" => "Can manage the firewall?",
 		"security_lvl"	=> "Can manage CloudFlare security level?",
+		"integrations"	=> "Can manage CloudFlare browser integrations?",
 		"blacklist"		=> "Can manage CloudFlare blacklist?",
 		"whitelist"		=> "Can manage CloudFlare whitelist?",
 		"challenge"		=> "Can manage CloudFlare challenge?",

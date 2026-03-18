@@ -6,6 +6,22 @@ if(!defined("IN_MYBB"))
 	die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
 
+function cloudflare_cache_level_error_message($request)
+{
+	if(is_object($request) && !empty($request->errors) && is_array($request->errors))
+	{
+		foreach($request->errors as $error)
+		{
+			if(!empty($error->message))
+			{
+				return $error->message;
+			}
+		}
+	}
+
+	return 'Unable to read the current CloudFlare cache level.';
+}
+
 $page->add_breadcrumb_item("CloudFlare Manager", "index.php?module=cloudflare");
 $page->add_breadcrumb_item("Cache Level", "index.php?module=cloudflare-cache_lvl");
 $page->output_header("CloudFlare Manager - Cache Level");
@@ -33,6 +49,7 @@ function main_page($current_cache_level, $modified_on)
 
 $errors = [];
 $dn = '';
+$current_cache_level = 'unknown';
 if ($mybb->input['action'] == 'change')
 {
 	if(!verify_post_check($mybb->input['my_post_key']))
@@ -49,20 +66,40 @@ if ($mybb->input['action'] == 'change')
 	}
 	else
 	{
-		$errors[] = $request->errors[0]->message;
-		$page->output_error($request->errors[0]->message);
+		$errors[] = cloudflare_cache_level_error_message($request);
+		$page->output_error(cloudflare_cache_level_error_message($request));
 	}
 }
 
 if (!isset($mybb->input['cache_level']) && empty($errors))
 {
 	$request = $cloudflare->cache_level();
-	$current_cache_level = $request->result->value;
-	$dn = $cloudflare->get_readable_dt($request->result->modified_on);
+	if(is_object($request) && !empty($request->success) && isset($request->result) && isset($request->result->value))
+	{
+		$current_cache_level = $request->result->value;
+		if(!empty($request->result->modified_on))
+		{
+			$dn = $cloudflare->get_readable_dt($request->result->modified_on);
+		}
+		else
+		{
+			$dn = 'unknown';
+		}
+	}
+	else
+	{
+		$errors[] = cloudflare_cache_level_error_message($request);
+		$dn = 'unknown';
+	}
 }
 else
 {
 	$current_cache_level = $mybb->input['cache_level'];
+}
+
+if(!empty($errors))
+{
+	$page->output_inline_error(array_values(array_unique($errors)));
 }
 
 $page->output_alert("The cache level is currently set to {$current_cache_level} (Modified on: {$dn})");

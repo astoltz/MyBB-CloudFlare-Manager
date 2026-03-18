@@ -1,5 +1,9 @@
 /*
 /*/
 !/.gitignore
+!/.editorconfig
+!/admin/
+!/admin/modules/
 !/admin/modules/cloudflare/
+!/admin/modules/cloudflare/**
 !/inc/plugins/cloudflare.php
